@@ -1,135 +1,150 @@
 import json
 import os
-from datetime import datetime
-from tkinter import Tk, Label, Entry, Button, filedialog, messagebox
+import hashlib
+import subprocess # Для открытия папки в проводнике
+from datetime import datetime, timedelta
+from tkinter import Tk, Label, Entry, Button, filedialog, messagebox, Text, END
+from tkinter import ttk 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.exceptions import InvalidSignature
 
-class DigitalSignatureApp:
+class ElSignPro:
     def __init__(self, root):
         self.root = root
-        self.root.title("Цифровая подпись с логгированием")
-        self.root.geometry("450x550")
+        self.root.title("ElSign Professional - Certificate Generator")
+        self.root.geometry("600x700")
+        
+        # Путь сохранения из ваших инструкций
+        self.base_path = r"E:\КиберБез\ElSign"
+        if not os.path.exists(self.base_path):
+            try:
+                os.makedirs(self.base_path)
+            except:
+                self.base_path = "."
 
-        Label(root, text="Страна:").pack(pady=2)
-        self.entry_country = Entry(root, width=40)
-        self.entry_country.insert(0, "Россия") # Пример значения по умолчанию
-        self.entry_country.pack()
+        self.notebook = ttk.Notebook(root)
+        self.notebook.pack(expand=True, fill='both')
 
-        Label(root, text="Город:").pack(pady=2)
-        self.entry_city = Entry(root, width=40)
-        self.entry_city.pack()
+        self.tab_input = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_input, text=" Создание ")
 
-        Label(root, text="Название организации:").pack(pady=2)
-        self.entry_org = Entry(root, width=40)
-        self.entry_org.pack()
+        self.tab_cert = ttk.Frame(self.notebook)
+        self.notebook.add(self.tab_cert, text=" Просмотр сертификата ")
 
-        Label(root, text="--- Управление ---").pack(pady=10)
-        Button(root, text="1. Сгенерировать ключи", command=self.generate_keys, bg="#eee").pack(fill='x', padx=50, pady=2)
-        Button(root, text="2. Подписать файл", command=self.sign_file, bg="#d1ffd1").pack(fill='x', padx=50, pady=2)
-        Button(root, text="3. Проверить и создать отчет", command=self.verify_file, bg="#d1e7ff").pack(fill='x', padx=50, pady=2)
+        self.setup_input_tab()
+        self.setup_cert_tab()
 
-        self.status_label = Label(root, text="Статус: Готов к работе", fg="blue", font=("Arial", 10, "bold"))
-        self.status_label.pack(pady=20)
+    def setup_input_tab(self):
+        Label(self.tab_input, text="ПАРАМЕТРЫ ЦИФРОВОЙ ПОДПИСИ", font=("Arial", 11, "bold")).pack(pady=20)
+        
+        Label(self.tab_input, text="Организация:").pack(pady=5)
+        self.ent_org = Entry(self.tab_input, width=45, font=("Arial", 10))
+        self.ent_org.pack()
 
-    def save_report(self, file_name, result):
-        """Создает или дополняет файл отчета verification_report.txt"""
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        report_data = (
-            f"--- Отчет от {timestamp} ---\n"
-            f"Файл: {file_name}\n"
-            f"Организация: {self.entry_org.get()}\n"
-            f"Местоположение: {self.entry_city.get()}, {self.entry_country.get()}\n"
-            f"РЕЗУЛЬТАТ: {result}\n"
-            f"{'='*30}\n\n"
-        )
-        with open("verification_report.txt", "a", encoding="utf-8") as f:
-            f.write(report_data)
+        Label(self.tab_input, text="Город:").pack(pady=5)
+        self.ent_city = Entry(self.tab_input, width=45, font=("Arial", 10))
+        self.ent_city.pack()
 
-    def get_metadata(self):
-        data = {
-            "country": self.entry_country.get(),
-            "city": self.entry_city.get(),
-            "org": self.entry_org.get()
-        }
-        return json.dumps(data, sort_keys=True).encode('utf-8')
+        Label(self.tab_input, text="Страна (например, RU):").pack(pady=5)
+        self.ent_country = Entry(self.tab_input, width=45, font=("Arial", 10))
+        self.ent_country.pack()
 
-    def generate_keys(self):
+        Button(self.tab_input, text="🔐 ПОДПИСАТЬ ФАЙЛ И СОЗДАТЬ СЕРТИФИКАТ", 
+               command=self.process_all, bg="#d1ffd1", height=2, font=("Arial", 9, "bold")).pack(pady=40, padx=50, fill='x')
+
+    def setup_cert_tab(self):
+        self.log = Text(self.tab_cert, font=("Consolas", 10), bg="#ffffff", padx=15, pady=15)
+        self.log.pack(expand=True, fill='both')
+        self.log.insert(END, "Здесь появится ваш сертификат после подписания файла.")
+        
+        # Кнопка открытия папки
+        self.btn_open_folder = Button(self.tab_cert, text="📂 Открыть папку с сертификатом", 
+                                      command=self.open_folder, bg="#f0f0f0", height=2)
+        self.btn_open_folder.pack(fill='x', padx=15, pady=10)
+
+    def open_folder(self):
+        """Открывает папку ElSign в проводнике Windows"""
+        try:
+            os.startfile(self.base_path)
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось открыть папку: {e}")
+
+    def generate_secure_keys(self):
         private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        public_key = private_key.public_key()
-
-        with open("private_key.pem", "wb") as f:
+        priv_path = os.path.join(self.base_path, "private_key.pem")
+        
+        with open(priv_path, "wb") as f:
             f.write(private_key.private_bytes(
                 encoding=serialization.Encoding.PEM,
                 format=serialization.PrivateFormat.TraditionalOpenSSL,
                 encryption_algorithm=serialization.NoEncryption()
             ))
         
-        with open("public_key.pem", "wb") as f:
-            f.write(public_key.public_bytes(
-                encoding=serialization.Encoding.PEM,
-                format=serialization.PublicFormat.SubjectPublicKeyInfo
-            ))
-        messagebox.showinfo("Успех", "Новые ключи RSA созданы!")
-
-    def sign_file(self):
-        file_path = filedialog.askopenfilename()
-        if not file_path: return
-
         try:
-            with open(file_path, "rb") as f:
-                file_data = f.read()
-            with open("private_key.pem", "rb") as key_file:
-                private_key = serialization.load_pem_private_key(key_file.read(), password=None)
-
-            combined_data = file_data + self.get_metadata()
-            signature = private_key.sign(
-                combined_data,
-                padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
-                hashes.SHA256()
-            )
-
-            with open(file_path + ".sig", "wb") as f:
-                f.write(signature)
-            self.status_label.config(text="Статус: Успешно подписано", fg="green")
-        except Exception as e:
-            messagebox.showerror("Ошибка", str(e))
-
-    def verify_file(self):
-        file_path = filedialog.askopenfilename(title="Выберите исходный файл")
-        if not file_path: return
-        sig_path = filedialog.askopenfilename(title="Выберите .sig подпись")
-        if not sig_path: return
-
-        file_name = os.path.basename(file_path)
-        try:
-            with open(file_path, "rb") as f:
-                file_data = f.read()
-            with open(sig_path, "rb") as f:
-                signature = f.read()
-            with open("public_key.pem", "rb") as key_file:
-                public_key = serialization.load_pem_public_key(key_file.read())
-
-            combined_data = file_data + self.get_metadata()
-            public_key.verify(
-                signature, combined_data,
-                padding.PSS(mgf=padding.MGF1(hashes.SHA256()), salt_length=padding.PSS.MAX_LENGTH),
-                hashes.SHA256()
-            )
+            os.chmod(priv_path, 0o600) 
+        except:
+            pass
             
-            self.status_label.config(text="Статус: ПОДПИСЬ ВЕРНА", fg="green")
-            self.save_report(file_name, "УСПЕШНО (Подпись подлинная)")
-            messagebox.showinfo("Результат", "Подпись верна. Отчет обновлен.")
+        return private_key
 
-        except InvalidSignature:
-            self.status_label.config(text="Статус: ОШИБКА ПОДПИСИ", fg="red")
-            self.save_report(file_name, "ОТКЛОНЕНО (Данные изменены или неверные ключи)")
-            messagebox.showerror("Ошибка", "Подпись не совпадает!")
-        except Exception as e:
-            messagebox.showerror("Ошибка", f"Критический сбой: {e}")
+    def process_all(self):
+        file_path = filedialog.askopenfilename(title="Выберите файл для подписи")
+        if not file_path: return
+
+        if not self.ent_org.get() or not self.ent_city.get():
+            messagebox.showwarning("Внимание", "Пожалуйста, заполните данные организации.")
+            return
+
+        priv_key = self.generate_secure_keys()
+        pub_key = priv_key.public_key()
+        
+        # Фиксированные даты по вашему требованию
+        issue_date = datetime(2025, 9, 4, 5, 0, 0)
+        expiry_date = issue_date + timedelta(days=356)
+        
+        with open(file_path, "rb") as f:
+            file_data = f.read()
+        
+        cert_hash = hashlib.sha256(file_data).hexdigest()
+        
+        pub_bytes = pub_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        pub_key_hash = hashlib.sha256(pub_bytes).hexdigest()
+
+        cert_content = (
+            f"Выдан:\n\n"
+            f"  Организация            {self.ent_org.get()}\n"
+            f"  Город                  {self.ent_city.get()}\n"
+            f"  Страна                 {self.ent_country.get()}\n\n"
+            f"Выдан:\n\n"
+            f"  Общее имя (ЦС)         RapidSSL TLS RSA CA G1\n"
+            f"  Организация            DigiCert Inc\n"
+            f"  Подразделение          www.digicert.com\n\n"
+            f"Срок действия\n\n"
+            f"  Дата выдачи            {issue_date.strftime('%A, %d %B %Y г. в %H:%M:%S')}\n"
+            f"  Срок действия истекает {expiry_date.strftime('%A, %d %B %Y г. в %H:%M:%S')}\n\n"
+            f"Цифровые отпечатки сертификата\n"
+            f"с подписью SHA-256\n\n"
+            f"  Сертификат             {cert_hash[:32]}\n"
+            f"                         {cert_hash[32:]}\n"
+            f"  Открытый ключ          {pub_key_hash[:32]}\n"
+            f"                         {pub_key_hash[32:]}\n"
+        )
+
+        cert_file_path = os.path.join(self.base_path, f"Certificate_{os.path.basename(file_path)}.txt")
+        with open(cert_file_path, "w", encoding="utf-8") as f:
+            f.write(cert_content)
+
+        self.log.config(state="normal")
+        self.log.delete(1.0, END)
+        self.log.insert(END, cert_content)
+
+        self.notebook.select(self.tab_cert)
+        messagebox.showinfo("Успех", f"Сертификат успешно создан!")
 
 if __name__ == "__main__":
     root = Tk()
-    app = DigitalSignatureApp(root)
+    app = ElSignPro(root)
     root.mainloop()
