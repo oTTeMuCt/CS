@@ -17,8 +17,7 @@ class ElSignPro:
         self.root = root
         self.root.title("ElSign Professional - Certificate Generator")
         self.root.geometry("700x900")
-        
-        # 🔥 УНИВЕРСАЛЬНЫЙ ПУТЬ
+
         try:
             base_dir = Path(sys._MEIPASS)
         except AttributeError:
@@ -48,14 +47,13 @@ class ElSignPro:
     def setup_input_tab(self):
         Label(self.tab_input, text="ПАРАМЕТРЫ ЦИФРОВОЙ ПОДПИСИ", font=("Arial", 11, "bold")).pack(pady=15)
         
-        # 🔐 ИНФОРМАЦИЯ О КЛЮЧЕ (без показа самого ключа!)
+  
         self.key_info_frame = Label(self.tab_input, text=" 🔐 Статус ключа подписи ", font=("Arial", 9, "bold"), padx=10, pady=10)
         self.key_info_frame.pack(pady=10, padx=10, fill='x')
         
         self.key_status_label = Label(self.key_info_frame, text="⊘ Ключ не создан", font=("Arial", 10, "bold"), fg="orange")
         self.key_status_label.pack(anchor='w', pady=5)
         
-        # 🔥 ОТПЕЧАТОК КЛЮЧА (уникальный идентификатор, не сам ключ)
         self.key_fingerprint_label = Label(self.key_info_frame, 
             text="ID ключа: —", 
             font=("Consolas", 9), 
@@ -192,12 +190,12 @@ class ElSignPro:
         
         if priv_path.exists():
             try:
-                # Вычисляем отпечаток ключа (хэш файла ключа)
+            
                 with open(priv_path, "rb") as f:
                     key_data = f.read()
                     key_hash = hashlib.sha256(key_data).hexdigest()
                 
-                # 🔥 Показываем только отпечаток, не сам ключ!
+               
                 fingerprint = f"{key_hash[:8].upper()}-{key_hash[8:16].upper()}-{key_hash[-8:].upper()}"
                 
                 self.key_status_label.config(text="✓ Ключ активен", fg="green")
@@ -267,7 +265,7 @@ class ElSignPro:
         else:
             private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
             
-            # Сохраняем приватный ключ
+           
             with open(priv_path, "wb") as f:
                 f.write(private_key.private_bytes(
                     encoding=serialization.Encoding.PEM,
@@ -275,7 +273,7 @@ class ElSignPro:
                     encryption_algorithm=serialization.NoEncryption()
                 ))
             
-            # 🔥 Сохраняем публичный ключ отдельно (для проверки без приватного)
+            
             pub_key = private_key.public_key()
             with open(pub_path, "wb") as f:
                 f.write(pub_key.public_bytes(
@@ -301,7 +299,7 @@ class ElSignPro:
                 "Продолжить?")
             if confirm:
                 try:
-                    # Резервная копия старого ключа
+                
                     backup_priv = self.base_path / "private_key_OLD.pem"
                     backup_pub = self.base_path / "public_key_OLD.pem"
                     
@@ -343,13 +341,13 @@ class ElSignPro:
         issue_date = datetime.now()
         expiry_date = issue_date + timedelta(days=356)
         
-        # Читаем файл и вычисляем хэш
+       
         with open(file_path, "rb") as f:
             file_data = f.read()
         
         file_hash = hashlib.sha256(file_data).digest()
         
-        # 🔥 СОЗДАЁМ КРИПТОГРАФИЧЕСКУЮ ПОДПИСЬ
+        
         signature = priv_key.sign(
             file_hash,
             padding.PKCS1v15(),
@@ -358,7 +356,7 @@ class ElSignPro:
         
         signature_b64 = base64.b64encode(signature).decode('utf-8')
         
-        # Хэши для отображения
+        
         cert_hash_hex = hashlib.sha256(file_data).hexdigest()
         
         pub_bytes = pub_key.public_bytes(
@@ -367,7 +365,6 @@ class ElSignPro:
         )
         pub_key_hash = hashlib.sha256(pub_bytes).hexdigest()
         
-        # 🔥 Отпечаток приватного ключа (для идентификации)
         priv_path = self.base_path / "private_key.pem"
         with open(priv_path, "rb") as f:
             key_fingerprint = hashlib.sha256(f.read()).hexdigest()[:16].upper()
@@ -403,14 +400,14 @@ class ElSignPro:
         cert_content += f"Подпись создана программой ElSign Professional\n"
         cert_content += f"⚠ Приватный ключ не отображается в сертификате (безопасность)\n"
 
-        # Сохраняем сертификат
+        
         cert_filename = f"Certificate_{Path(file_path).name}.txt"
         cert_file_path = self.base_path / cert_filename
         
         with open(cert_file_path, "w", encoding="utf-8") as f:
             f.write(cert_content)
 
-        # Показываем в интерфейсе
+        
         self.log.config(state="normal")
         self.log.delete(1.0, END)
         self.log.insert(END, cert_content)
@@ -458,12 +455,12 @@ class ElSignPro:
             self.verify_result.insert(END, "="*60 + "\n\n")
             self.verify_result.update()
             
-            # 1. Читаем сертификат
+            
             self.verify_result.insert(END, "📄 Чтение сертификата...\n")
             with open(cert_path, "r", encoding="utf-8") as f:
                 cert_content = f.read()
             
-            # Извлекаем хэш файла
+            
             hash_match = re.search(r'Файл \(SHA-256\)\s+([a-fA-F0-9]{32})\s+([a-fA-F0-9]{32})', cert_content)
             if not hash_match:
                 raise Exception("Не удалось найти хэш файла в сертификате")
@@ -471,7 +468,7 @@ class ElSignPro:
             cert_file_hash = (hash_match.group(1) + hash_match.group(2)).lower()
             self.verify_result.insert(END, f"✓ Хэш из сертификата:\n  {cert_file_hash}\n\n")
             
-            # Извлекаем подпись
+          
             sig_match = re.search(r'Подпись \(Base64\):([\s\S]+?)(?=\n\n|\n{2,}|$)', cert_content)
             if not sig_match:
                 raise Exception("Не удалось найти подпись в сертификате")
@@ -481,7 +478,7 @@ class ElSignPro:
             signature = base64.b64decode(signature_b64)
             self.verify_result.insert(END, f"✓ Подпись извлечена\n  Размер: {len(signature)} байт\n\n")
             
-            # 2. Вычисляем хэш файла
+          
             self.verify_result.insert(END, "📁 Вычисление хэша файла...\n")
             with open(file_path, "rb") as f:
                 file_data = f.read()
@@ -489,7 +486,7 @@ class ElSignPro:
             actual_hash = hashlib.sha256(file_data).hexdigest().lower()
             self.verify_result.insert(END, f"✓ Хэш файла:\n  {actual_hash}\n\n")
             
-            # 3. Проверяем хэши
+         
             self.verify_result.insert(END, "🔐 Проверка целостности...\n")
             if actual_hash == cert_file_hash:
                 self.verify_result.insert(END, "✓ Хэши СОВПАДАЮТ\n")
@@ -500,10 +497,10 @@ class ElSignPro:
                 self.verify_result.insert(END, "  Файл был ИЗМЕНЁН после подписания!\n\n", ("red",))
                 hash_valid = False
             
-            # 4. Проверяем криптографическую подпись
+            
             self.verify_result.insert(END, "🔑 Проверка криптографической подписи...\n")
             try:
-                # Пытаемся использовать публичный ключ из файла
+                
                 pub_path = self.base_path / "public_key.pem"
                 if pub_path.exists():
                     with open(pub_path, "rb") as f:
@@ -529,7 +526,7 @@ class ElSignPro:
                 self.verify_result.insert(END, f"  Ошибка: {str(e)}\n\n", ("red",))
                 sig_valid = False
             
-            # 5. Итоговый результат
+         
             self.verify_result.insert(END, "="*60 + "\n")
             self.verify_result.insert(END, "📊 ИТОГОВЫЙ РЕЗУЛЬТАТ:\n\n")
             
